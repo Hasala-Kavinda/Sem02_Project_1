@@ -1,30 +1,22 @@
-#include "../include/canvas.h"
+#include "canvas.h"
 #include <stdlib.h>
-#include <stdio.h>
-#include <math.h>
 #include <string.h>
+#include <math.h>
+#include <stdio.h>
 
+// Create a canvas with given width and height
 canvas_t *canvas_create(int width, int height)
 {
-    // make sure the width and height is valid
     if (width <= 0 || height <= 0)
-    {
         return NULL;
-    }
 
-    canvas_t *canvas = malloc(sizeof(canvas_t));
-
-    // make sure the memory allocation for the canvas is successfull
+    canvas_t *canvas = (canvas_t *)malloc(sizeof(canvas_t));
     if (!canvas)
-    {
         return NULL;
-    }
 
     canvas->width = width;
     canvas->height = height;
-
-    // Allocate 2D array for pixels
-    canvas->pixels = malloc(height * sizeof(float *));
+    canvas->pixels = (float **)malloc(height * sizeof(float *));
     if (!canvas->pixels)
     {
         free(canvas);
@@ -33,10 +25,9 @@ canvas_t *canvas_create(int width, int height)
 
     for (int y = 0; y < height; y++)
     {
-        canvas->pixels[y] = calloc(width, sizeof(float));
+        canvas->pixels[y] = (float *)calloc(width, sizeof(float));
         if (!canvas->pixels[y])
         {
-            // Clean up on failure
             for (int i = 0; i < y; i++)
             {
                 free(canvas->pixels[i]);
@@ -46,105 +37,85 @@ canvas_t *canvas_create(int width, int height)
             return NULL;
         }
     }
-
     return canvas;
 }
 
+// Destroy the canvas and free memory
 void canvas_destroy(canvas_t *canvas)
 {
     if (!canvas)
-        return NULL;
-
-    if (canvas->pixels)
+        return;
+    for (int y = 0; y < canvas->height; y++)
     {
-        for (int y = 0; y < canvas->height; y++)
-        {
-            free(canvas->pixels[y]);
-        }
-        free(canvas->pixels);
+        free(canvas->pixels[y]);
     }
-
+    free(canvas->pixels);
     free(canvas);
 }
 
-void canvas_clear(canvas_t *canvas)
+// Clear the canvas to a specific value
+void canvas_clear(canvas_t *canvas, float value)
 {
-    if (!canvas || !canvas->pixels)
-        return NULL;
-
+    if (!canvas)
+        return;
     for (int y = 0; y < canvas->height; y++)
     {
-        memset(canvas->pixels[y], 0, canvas->width * sizeof(float));
+        for (int x = 0; x < canvas->width; x++)
+        {
+            canvas->pixels[y][x] = value;
+        }
     }
 }
 
+// Set pixel brightness at floating-point coordinates with bilinear filtering
 void set_pixel_f(canvas_t *canvas, float x, float y, float intensity)
 {
-    if (!canvas || !canvas->pixels)
+    if (!canvas || intensity <= 0.0f || intensity > 1.0f)
         return;
 
-    // Clamp intensity to valid range
-    if (intensity < 0.0f)
-        intensity = 0.0f;
-    if (intensity > 1.0f)
-        intensity = 1.0f;
-
-    // Get integer coordinates and fractional parts
-    int x0 = (int)floor(x);
-    int y0 = (int)floor(y);
+    int x0 = (int)floorf(x);
     int x1 = x0 + 1;
+    int y0 = (int)floorf(y);
     int y1 = y0 + 1;
 
-    float fx = x - x0; // Fractional part of x
-    float fy = y - y0; // Fractional part of y
-
-    // Bilinear interpolation weights
-    float w00 = (1.0f - fx) * (1.0f - fy); // Top-left
-    float w10 = fx * (1.0f - fy);          // Top-right
-    float w01 = (1.0f - fx) * fy;          // Bottom-left
-    float w11 = fx * fy;                   // Bottom-right
-
-    // Apply intensity to each pixel with bounds checking
-    if (x0 >= 0 && x0 < canvas->width && y0 >= 0 && y0 < canvas->height)
-    {
-        canvas->pixels[y0][x0] += intensity * w00;
-        if (canvas->pixels[y0][x0] > 1.0f)
-            canvas->pixels[y0][x0] = 1.0f;
-    }
-
-    if (x1 >= 0 && x1 < canvas->width && y0 >= 0 && y0 < canvas->height)
-    {
-        canvas->pixels[y0][x1] += intensity * w10;
-        if (canvas->pixels[y0][x1] > 1.0f)
-            canvas->pixels[y0][x1] = 1.0f;
-    }
-
-    if (x0 >= 0 && x0 < canvas->width && y1 >= 0 && y1 < canvas->height)
-    {
-        canvas->pixels[y1][x0] += intensity * w01;
-        if (canvas->pixels[y1][x0] > 1.0f)
-            canvas->pixels[y1][x0] = 1.0f;
-    }
-
-    if (x1 >= 0 && x1 < canvas->width && y1 >= 0 && y1 < canvas->height)
-    {
-        canvas->pixels[y1][x1] += intensity * w11;
-        if (canvas->pixels[y1][x1] > 1.0f)
-            canvas->pixels[y1][x1] = 1.0f;
-    }
-}
-
-void draw_line_f(canvas_t *canvas, float x0, float y0, float x1, float y1, float thickness)
-{
-    if (!canvas || thickness <= 0.0f)
+    if (x0 < 0 || x1 >= canvas->width || y0 < 0 || y1 >= canvas->height)
         return;
 
-    // Calculate line direction and length
+    float fx = x - x0;
+    float fy = y - y0;
+    float w00 = (1.0f - fx) * (1.0f - fy);
+    float w10 = fx * (1.0f - fy);
+    float w01 = (1.0f - fx) * fy;
+    float w11 = fx * fy;
+
+    canvas->pixels[y0][x0] += intensity * w00;
+    if (canvas->pixels[y0][x0] > 1.0f)
+        canvas->pixels[y0][x0] = 1.0f;
+
+    canvas->pixels[y0][x1] += intensity * w10;
+    if (canvas->pixels[y0][x1] > 1.0f)
+        canvas->pixels[y0][x1] = 1.0f;
+
+    canvas->pixels[y1][x0] += intensity * w01;
+    if (canvas->pixels[y1][x0] > 1.0f)
+        canvas->pixels[y1][x0] = 1.0f;
+
+    canvas->pixels[y1][x1] += intensity * w11;
+    if (canvas->pixels[y1][x1] > 1.0f)
+        canvas->pixels[y1][x1] = 1.0f;
+}
+
+// Draw a line from (x0, y0) to (x1, y1) with thickness using circular brush and DDA
+void draw_line_f(canvas_t *canvas, float x0, float y0, float x1, float y1, float thickness)
+{
+    if (!canvas)
+        return;
+
     float dx = x1 - x0;
     float dy = y1 - y0;
     float length = sqrtf(dx * dx + dy * dy);
 
-    if (length == 0.0f)
+      if (length == 0.0f)
     {
         // Single point - draw a circle
         for (float t = -thickness; t <= thickness; t += 0.1f)
@@ -160,62 +131,46 @@ void draw_line_f(canvas_t *canvas, float x0, float y0, float x1, float y1, float
         return;
     }
 
-    // Normalize direction vector
-    float ux = dx / length;
-    float uy = dy / length;
+    int steps = (int)ceilf(length * 2); // Increase steps for smoothness
+    float x_increment = dx / steps;
+    float y_increment = dy / steps;
 
-    // Perpendicular vector for thickness
-    float px = -uy;
-    float py = ux;
-
-    // DDA algorithm with thickness
-    int steps = (int)(length + 1);
-    if (steps < 1)
-        steps = 1;
-
-    float step_x = dx / steps;
-    float step_y = dy / steps;
+    float radius = thickness / 2.0f;
 
     for (int i = 0; i <= steps; i++)
     {
-        float curr_x = x0 + i * step_x;
-        float curr_y = y0 + i * step_y;
+        float x = x0 + i * x_increment;
+        float y = y0 + i * y_increment;
 
-        // Draw thickness by drawing perpendicular line segment
-        for (float t = -thickness / 2.0f; t <= thickness / 2.0f; t += 0.1f)
+        // Draw circular brush around (x,y)
+        for (float dx = -radius; dx <= radius; dx += 0.5f)
         {
-            float offset_x = curr_x + t * px;
-            float offset_y = curr_y + t * py;
-
-            // Anti-aliasing based on distance from line center
-            float distance_from_center = fabsf(t) / (thickness / 2.0f);
-            float intensity = 1.0f - distance_from_center;
-            if (intensity < 0.0f)
-                intensity = 0.0f;
-
-            set_pixel_f(canvas, offset_x, offset_y, intensity);
+            for (float dy = -radius; dy <= radius; dy += 0.5f)
+            {
+                float dist = sqrtf(dx * dx + dy * dy);
+                if (dist <= radius)
+                {
+                    // Intensity fades linearly from center to edge
+                    float intensity = 1.0f - (dist / radius);
+                    set_pixel_f(canvas, x + dx, y + dy, intensity);
+                }
+            }
         }
     }
 }
 
+// Save canvas to PGM file
 void canvas_save_pgm(canvas_t *canvas, const char *filename)
 {
-    if (!canvas || !canvas->pixels || !filename)
-        return NULL;
-
-    FILE *file = fopen(filename, "w");
-    if (!file)
-    {
-        printf("Error: Could not open file %s for writing\n", filename);
+    if (!canvas || !filename)
         return;
-    }
 
-    // Write PGM header
-    fprintf(file, "P2\n");
-    fprintf(file, "%d %d\n", canvas->width, canvas->height);
-    fprintf(file, "255\n");
+    FILE *fp = fopen(filename, "w");
+    if (!fp)
+        return;
 
-    // Write pixel data
+    fprintf(fp, "P2\n%d %d\n255\n", canvas->width, canvas->height);
+
     for (int y = 0; y < canvas->height; y++)
     {
         for (int x = 0; x < canvas->width; x++)
@@ -223,11 +178,12 @@ void canvas_save_pgm(canvas_t *canvas, const char *filename)
             int pixel_value = (int)(canvas->pixels[y][x] * 255.0f);
             if (pixel_value > 255)
                 pixel_value = 255;
-            fprintf(file, "%d ", pixel_value);
+            if (pixel_value < 0)
+                pixel_value = 0;
+            fprintf(fp, "%d ", pixel_value);
         }
-        fprintf(file, "\n");
+        fprintf(fp, "\n");
     }
 
-    fclose(file);
-    printf("Canvas saved to %s\n", filename);
+    fclose(fp);
 }

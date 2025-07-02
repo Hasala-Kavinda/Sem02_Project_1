@@ -1,205 +1,215 @@
 #include "math3d.h"
 #include <math.h>
-#include <stdint.h>
 
-// Fast inverse square root (Quake III algorithm)
-float Q_rsqrt(float number)
+// Create a 3D vector with Cartesian coordinates
+vec3_t vec3_create(float x, float y, float z)
 {
-    union
-    {
-        float f;
-        uint32_t i;
-    } conv = {.f = number};
-
-    conv.i = 0x5f3759df - (conv.i >> 1);
-    conv.f *= 1.5F - (number * 0.5F * conv.f * conv.f);
-    return conv.f;
-}
-
-vec3_t vec3_from_cartesian(float x, float y, float z)
-{
-    vec3_t v = {
-        .x = x, .y = y, .z = z, .cartesian_dirty = false, .spherical_dirty = true};
+    vec3_t v = {x, y, z, 0.0f, 0.0f, 0.0f};
+    vec3_update_spherical(&v);
     return v;
 }
 
+// Create a 3D vector from spherical coordinates
 vec3_t vec3_from_spherical(float r, float theta, float phi)
 {
-    vec3_t v = {
-        .r = r, .theta = theta, .phi = phi, .cartesian_dirty = true, .spherical_dirty = false};
+    vec3_t v = {0.0f, 0.0f, 0.0f, r, theta, phi};
+    vec3_update_cartesian(&v);
     return v;
 }
 
-void update_spherical(vec3_t *v)
+// Update spherical coordinates based on Cartesian coordinates
+void vec3_update_spherical(vec3_t *v)
 {
-    if (!v->spherical_dirty)
-        return;
-
     v->r = sqrtf(v->x * v->x + v->y * v->y + v->z * v->z);
-    v->theta = atan2f(v->y, v->x);
-    v->phi = acosf(v->z / v->r);
-    v->spherical_dirty = false;
+
+    if (v->r == 0.0f)
+    {
+        v->theta = 0.0f;
+        v->phi = 0.0f;
+    }
+    else
+    {
+        v->theta = atan2f(v->y, v->x);
+        v->phi = acosf(v->z / v->r);
+    }
 }
 
-void update_cartesian(vec3_t *v)
+// Update Cartesian coordinates based on spherical coordinates
+void vec3_update_cartesian(vec3_t *v)
 {
-    if (!v->cartesian_dirty)
-        return;
-
-    float sin_theta = sinf(v->theta);
-    float cos_theta = cosf(v->theta);
     float sin_phi = sinf(v->phi);
-    float cos_phi = cosf(v->phi);
-
-    v->x = v->r * cos_theta * sin_phi;
-    v->y = v->r * sin_theta * sin_phi;
-    v->z = v->r * cos_phi;
-    v->cartesian_dirty = false;
+    v->x = v->r * sin_phi * cosf(v->theta);
+    v->y = v->r * sin_phi * sinf(v->theta);
+    v->z = v->r * cosf(v->phi);
 }
 
+// Vector addition
+vec3_t vec3_add(vec3_t a, vec3_t b)
+{
+    return vec3_create(a.x + b.x, a.y + b.y, a.z + b.z);
+}
+
+// Vector subtraction
+vec3_t vec3_sub(vec3_t a, vec3_t b)
+{
+    return vec3_create(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+// Vector scaling
+vec3_t vec3_scale(vec3_t v, float s)
+{
+    return vec3_create(v.x * s, v.y * s, v.z * s);
+}
+
+// Dot product
+float vec3_dot(vec3_t a, vec3_t b)
+{
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+// Cross product
+vec3_t vec3_cross(vec3_t a, vec3_t b)
+{
+    return vec3_create(
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x);
+}
+
+// Vector length
+float vec3_length(vec3_t v)
+{
+    return sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+}
+
+// Normalize vector (accurate version)
+vec3_t vec3_normalize(vec3_t v)
+{
+    float len = vec3_length(v);
+    if (len == 0.0f)
+        return v;
+    return vec3_scale(v, 1.0f / len);
+}
+
+// Fast normalize using Quake's inverse square root approximation
 vec3_t vec3_normalize_fast(vec3_t v)
 {
-    update_cartesian(&v);
-    float inv_norm = Q_rsqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-    v.x *= inv_norm;
-    v.y *= inv_norm;
-    v.z *= inv_norm;
-    v.spherical_dirty = true;
-    return v;
+    float len_sq = v.x * v.x + v.y * v.y + v.z * v.z;
+    if (len_sq == 0.0f)
+        return v;
+
+    // Fast inverse square root (Quake III algorithm)
+    float half_len = 0.5f * len_sq;
+    int i = *(int *)&len_sq;
+    i = 0x5f3759df - (i >> 1);
+    len_sq = *(float *)&i;
+    len_sq = len_sq * (1.5f - (half_len * len_sq * len_sq));
+
+    return vec3_scale(v, len_sq);
 }
 
+// Spherical linear interpolation
 vec3_t vec3_slerp(vec3_t a, vec3_t b, float t)
 {
-    update_cartesian(&a);
-    update_cartesian(&b);
+    // Normalize inputs
+    a = vec3_normalize(a);
+    b = vec3_normalize(b);
 
-    // Normalize vectors
-    a = vec3_normalize_fast(a);
-    b = vec3_normalize_fast(b);
-
-    float dot = a.x * b.x + a.y * b.y + a.z * b.z;
+    float dot = vec3_dot(a, b);
     dot = fmaxf(-1.0f, fminf(1.0f, dot)); // Clamp to avoid numerical issues
 
     float theta = acosf(dot) * t;
-    vec3_t relative = vec3_from_cartesian(
-        b.x - a.x * dot,
-        b.y - a.y * dot,
-        b.z - a.z * dot);
-    relative = vec3_normalize_fast(relative);
+    vec3_t relative = vec3_normalize(vec3_sub(b, vec3_scale(a, dot)));
 
-    float sin_theta = sinf(theta);
-    float cos_theta = cosf(theta);
-
-    vec3_t result = vec3_from_cartesian(
-        a.x * cos_theta + relative.x * sin_theta,
-        a.y * cos_theta + relative.y * sin_theta,
-        a.z * cos_theta + relative.z * sin_theta);
-
-    return result;
+    return vec3_add(vec3_scale(a, cosf(theta)), vec3_scale(relative, sinf(theta)));
 }
 
+// Create identity matrix
 mat4_t mat4_identity()
 {
-    mat4_t m = {{1, 0, 0, 0,
-                 0, 1, 0, 0,
-                 0, 0, 1, 0,
-                 0, 0, 0, 1}};
+    mat4_t m = {{{1, 0, 0, 0},
+                 {0, 1, 0, 0},
+                 {0, 0, 1, 0},
+                 {0, 0, 0, 1}}};
     return m;
 }
 
+// Create translation matrix
 mat4_t mat4_translate(float tx, float ty, float tz)
 {
     mat4_t m = mat4_identity();
-    m.m[12] = tx;
-    m.m[13] = ty;
-    m.m[14] = tz;
+    m.m[3][0] = tx;
+    m.m[3][1] = ty;
+    m.m[3][2] = tz;
     return m;
 }
 
+// Create scaling matrix
 mat4_t mat4_scale(float sx, float sy, float sz)
 {
     mat4_t m = mat4_identity();
-    m.m[0] = sx;
-    m.m[5] = sy;
-    m.m[10] = sz;
+    m.m[0][0] = sx;
+    m.m[1][1] = sy;
+    m.m[2][2] = sz;
     return m;
 }
 
+// Create rotation matrix (Euler angles XYZ)
 mat4_t mat4_rotate_xyz(float rx, float ry, float rz)
 {
-    mat4_t m = mat4_identity();
-
     float cx = cosf(rx), sx = sinf(rx);
     float cy = cosf(ry), sy = sinf(ry);
     float cz = cosf(rz), sz = sinf(rz);
 
-    // Rotation around X
-    mat4_t rot_x = mat4_identity();
-    rot_x.m[5] = cx;
-    rot_x.m[6] = -sx;
-    rot_x.m[9] = sx;
-    rot_x.m[10] = cx;
-
-    // Rotation around Y
-    mat4_t rot_y = mat4_identity();
-    rot_y.m[0] = cy;
-    rot_y.m[2] = sy;
-    rot_y.m[8] = -sy;
-    rot_y.m[10] = cy;
-
-    // Rotation around Z
-    mat4_t rot_z = mat4_identity();
-    rot_z.m[0] = cz;
-    rot_z.m[1] = -sz;
-    rot_z.m[4] = sz;
-    rot_z.m[5] = cz;
-
-    // Combine rotations: Z * Y * X
-    // (Note: Matrix multiplication implementation needed)
+    mat4_t m = {{{cy * cz, sx * sy * cz + cx * sz, -cx * sy * cz + sx * sz, 0},
+                 {-cy * sz, -sx * sy * sz + cx * cz, cx * sy * sz + sx * cz, 0},
+                 {sy, -sx * cy, cx * cy, 0},
+                 {0, 0, 0, 1}}};
     return m;
 }
 
+// Create asymmetric frustum projection matrix
 mat4_t mat4_frustum_asymmetric(float left, float right, float bottom, float top, float near, float far)
 {
-    mat4_t m = {{2 * near / (right - left), 0, (right + left) / (right - left), 0,
-                 0, 2 * near / (top - bottom), (top + bottom) / (top - bottom), 0,
-                 0, 0, -(far + near) / (far - near), -2 * far * near / (far - near),
-                 0, 0, -1, 0}};
+    mat4_t m = {{{(2 * near) / (right - left), 0, (right + left) / (right - left), 0},
+                 {0, (2 * near) / (top - bottom), (top + bottom) / (top - bottom), 0},
+                 {0, 0, -(far + near) / (far - near), -(2 * far * near) / (far - near)},
+                 {0, 0, -1, 0}}};
     return m;
 }
 
-mat4_t mat4_mul(mat4_t a, mat4_t b)
+// Matrix multiplication
+mat4_t mat4_multiply(mat4_t a, mat4_t b)
 {
-    mat4_t result;
-    for (int i = 0; i < 4; ++i)
+    mat4_t m;
+    for (int i = 0; i < 4; i++)
     {
-        for (int j = 0; j < 4; ++j)
+        for (int j = 0; j < 4; j++)
         {
-            result.m[i + j * 4] = 0.0f;
-            for (int k = 0; k < 4; ++k)
+            m.m[i][j] = 0;
+            for (int k = 0; k < 4; k++)
             {
-                result.m[i + j * 4] += a.m[i + k * 4] * b.m[k + j * 4];
+                m.m[i][j] += a.m[i][k] * b.m[k][j];
             }
         }
     }
-    return result;
+    return m;
 }
 
-vec3_t mat4_mul_vec3(mat4_t m, vec3_t v)
+// Transform a vector by a matrix
+vec3_t mat4_transform_vec3(mat4_t m, vec3_t v)
 {
-    update_cartesian(&v);
+    float x = m.m[0][0] * v.x + m.m[1][0] * v.y + m.m[2][0] * v.z + m.m[3][0];
+    float y = m.m[0][1] * v.x + m.m[1][1] * v.y + m.m[2][1] * v.z + m.m[3][1];
+    float z = m.m[0][2] * v.x + m.m[1][2] * v.y + m.m[2][2] * v.z + m.m[3][2];
+    float w = m.m[0][3] * v.x + m.m[1][3] * v.y + m.m[2][3] * v.z + m.m[3][3];
 
-    float x = m.m[0] * v.x + m.m[4] * v.y + m.m[8] * v.z + m.m[12];
-    float y = m.m[1] * v.x + m.m[5] * v.y + m.m[9] * v.z + m.m[13];
-    float z = m.m[2] * v.x + m.m[6] * v.y + m.m[10] * v.z + m.m[14];
-    float w = m.m[3] * v.x + m.m[7] * v.y + m.m[11] * v.z + m.m[15];
-
-    if (w != 0.0f)
+    if (w != 0.0f && w != 1.0f)
     {
         x /= w;
         y /= w;
         z /= w;
     }
 
-    return vec3_from_cartesian(x, y, z);
+    return vec3_create(x, y, z);
 }
