@@ -70,6 +70,7 @@ float vec3_dot(vec3_t a, vec3_t b)
 // Cross product
 vec3_t vec3_cross(vec3_t a, vec3_t b)
 {
+    // from the equation
     return vec3_create(
         a.y * b.z - a.z * b.y,
         a.z * b.x - a.x * b.z,
@@ -103,6 +104,8 @@ vec3_t vec3_normalize_fast(vec3_t v)
     int i = *(int *)&len_sq;
     i = 0x5f3759df - (i >> 1);
     len_sq = *(float *)&i;
+
+    // after appling the f'x and fx to the eqaution this is what we get
     len_sq = len_sq * (1.5f - (half_len * len_sq * len_sq));
 
     return vec3_scale(v, len_sq);
@@ -127,6 +130,7 @@ vec3_t vec3_slerp(vec3_t a, vec3_t b, float t)
 // Create identity matrix
 mat4_t mat4_identity()
 {
+    // As m is a structure and the matrix is iniside it
     mat4_t m = {{{1, 0, 0, 0},
                  {0, 1, 0, 0},
                  {0, 0, 1, 0},

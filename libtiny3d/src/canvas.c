@@ -115,7 +115,7 @@ void draw_line_f(canvas_t *canvas, float x0, float y0, float x1, float y1, float
     float dy = y1 - y0;
     float length = sqrtf(dx * dx + dy * dy);
 
-      if (length == 0.0f)
+    if (length == 0.0f)
     {
         // Single point - draw a circle
         for (float t = -thickness; t <= thickness; t += 0.1f)

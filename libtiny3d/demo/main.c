@@ -5,7 +5,7 @@
 
 #define WIDTH 400
 #define HEIGHT 400
-#define RADIUS 80.0f
+#define RADIUS 100.0f
 int main()
 {
     canvas_t *canvas = canvas_create(WIDTH, HEIGHT);
@@ -26,13 +26,13 @@ int main()
         float radians = angle * M_PI / 180.0f;
         float x1 = center_x + RADIUS * cosf(radians);
         float y1 = center_y + RADIUS * sinf(radians);
-        draw_line_f(canvas, center_x, center_y, x1, y1, 3.0f);
+        draw_line_f(canvas, center_x, center_y, x1, y1, 1.0f);
     }
 
-    canvas_save_pgm(canvas, "output.pgm");
+    canvas_save_pgm(canvas, "task_1_demo.pgm");
 
     canvas_destroy(canvas);
 
-    printf("Canvas saved to output.pgm\n");
+    printf("Canvas saved to task_1_demo.pgm\n");
     return 0;
 }
