@@ -16,9 +16,15 @@ typedef struct
     float phi;   // polar angle from Z-axis (0 to π)
 } vec3_t;
 
+typedef struct
+{
+    float x, y, z, w;
+} vec4_t;
+
 // 4x4 Matrix structure (column-major order)
 typedef struct
 {
+    // float m[16];
     float m[4][4];
 } mat4_t;
 

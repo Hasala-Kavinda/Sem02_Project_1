@@ -131,10 +131,13 @@ vec3_t vec3_slerp(vec3_t a, vec3_t b, float t)
 mat4_t mat4_identity()
 {
     // As m is a structure and the matrix is iniside it
-    mat4_t m = {{{1, 0, 0, 0},
-                 {0, 1, 0, 0},
-                 {0, 0, 1, 0},
-                 {0, 0, 0, 1}}};
+    mat4_t m = {{
+        {1.0f, 0, 0, 0},
+        {0, 1.0f, 0, 0},
+        {0, 0, 1.0f, 0},
+        {0, 0, 0, 1.0f},
+    }};
+
     return m;
 }
 
@@ -142,12 +145,11 @@ mat4_t mat4_identity()
 mat4_t mat4_translate(float tx, float ty, float tz)
 {
     mat4_t m = mat4_identity();
-    m.m[3][0] = tx;
-    m.m[3][1] = ty;
-    m.m[3][2] = tz;
+    m.m[0][3] = tx;
+    m.m[1][3] = ty;
+    m.m[2][3] = tz;
     return m;
 }
-
 // Create scaling matrix
 mat4_t mat4_scale(float sx, float sy, float sz)
 {
@@ -155,6 +157,7 @@ mat4_t mat4_scale(float sx, float sy, float sz)
     m.m[0][0] = sx;
     m.m[1][1] = sy;
     m.m[2][2] = sz;
+
     return m;
 }
 
@@ -169,16 +172,20 @@ mat4_t mat4_rotate_xyz(float rx, float ry, float rz)
                  {-cy * sz, -sx * sy * sz + cx * cz, cx * sy * sz + sx * cz, 0},
                  {sy, -sx * cy, cx * cy, 0},
                  {0, 0, 0, 1}}};
+
     return m;
 }
 
 // Create asymmetric frustum projection matrix
+// implementation of the matrix
 mat4_t mat4_frustum_asymmetric(float left, float right, float bottom, float top, float near, float far)
+
 {
     mat4_t m = {{{(2 * near) / (right - left), 0, (right + left) / (right - left), 0},
                  {0, (2 * near) / (top - bottom), (top + bottom) / (top - bottom), 0},
                  {0, 0, -(far + near) / (far - near), -(2 * far * near) / (far - near)},
                  {0, 0, -1, 0}}};
+
     return m;
 }
 
@@ -200,20 +207,29 @@ mat4_t mat4_multiply(mat4_t a, mat4_t b)
     return m;
 }
 
-// Transform a vector by a matrix
+vec4_t mat4_transform_vec4(mat4_t m, vec4_t v)
+{
+    // multiply the vector by matrix
+    vec4_t result;
+    result.x = m.m[0][0] * v.x + m.m[0][1] * v.y + m.m[0][2] * v.z + m.m[0][3] * v.w;
+    result.y = m.m[1][0] * v.x + m.m[1][1] * v.y + m.m[1][2] * v.z + m.m[1][3] * v.w;
+    result.z = m.m[2][0] * v.x + m.m[2][1] * v.y + m.m[2][2] * v.z + m.m[2][3] * v.w;
+    result.w = m.m[3][0] * v.x + m.m[3][1] * v.y + m.m[3][2] * v.z + m.m[3][3] * v.w;
+    return result;
+}
+
 vec3_t mat4_transform_vec3(mat4_t m, vec3_t v)
 {
-    float x = m.m[0][0] * v.x + m.m[1][0] * v.y + m.m[2][0] * v.z + m.m[3][0];
-    float y = m.m[0][1] * v.x + m.m[1][1] * v.y + m.m[2][1] * v.z + m.m[3][1];
-    float z = m.m[0][2] * v.x + m.m[1][2] * v.y + m.m[2][2] * v.z + m.m[3][2];
-    float w = m.m[0][3] * v.x + m.m[1][3] * v.y + m.m[2][3] * v.z + m.m[3][3];
+    vec4_t input = {v.x, v.y, v.z, 1.0f};
+    vec4_t result = mat4_transform_vec4(m, input);
 
-    if (w != 0.0f && w != 1.0f)
+    // makng sure that w is not zero
+    if (fabsf(result.w) > 0.0001f)
     {
-        x /= w;
-        y /= w;
-        z /= w;
+        result.x /= result.w;
+        result.y /= result.w;
+        result.z /= result.w;
     }
 
-    return vec3_create(x, y, z);
+    return vec3_create(result.x, result.y, result.z);
 }
