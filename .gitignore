@@ -1,0 +1,10 @@
+libtiny3d/src/math3d_copy.c
+libtiny3d/tests/frames/
+libtiny3d/tests/frames_pipeline/
+libtiny3d/tests/commands
+libtiny3d/task_2_demo.exe
+libtiny3d/task_3_demo.exe
+libtiny3d/task_1_demo.exe
+libtiny3d/task_1_demo.pgm
+libtiny3d/animation.gif
+.vscode

@@ -42,6 +42,7 @@ float vec3_length(vec3_t v);
 vec3_t vec3_normalize(vec3_t v);
 vec3_t vec3_normalize_fast(vec3_t v);
 vec3_t vec3_slerp(vec3_t a, vec3_t b, float t);
+vec4_t mat4_transform_vec4(mat4_t m, vec4_t v);
 
 // Matrix operations
 mat4_t mat4_identity();
@@ -51,5 +52,6 @@ mat4_t mat4_rotate_xyz(float rx, float ry, float rz);
 mat4_t mat4_frustum_asymmetric(float left, float right, float bottom, float top, float near, float far);
 mat4_t mat4_multiply(mat4_t a, mat4_t b);
 vec3_t mat4_transform_vec3(mat4_t m, vec3_t v);
+mat4_t mat4_look_at(vec3_t eye, vec3_t target, vec3_t up);
 
 #endif // MATH3D_H

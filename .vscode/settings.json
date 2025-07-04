@@ -3,6 +3,9 @@
         "*.ejs": "html",
         "*.js": "javascript",
         "*.java": "java",
-        "canvas.h": "c"
+        "canvas.h": "c",
+        "renderer.h": "c",
+        "math.h": "c",
+        "stdlib.h": "c"
     }
 }
