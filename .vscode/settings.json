@@ -6,6 +6,8 @@
         "canvas.h": "c",
         "renderer.h": "c",
         "math.h": "c",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "stdbool.h": "c",
+        "random": "c"
     }
 }

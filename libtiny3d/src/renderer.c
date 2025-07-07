@@ -3,121 +3,166 @@
 #include <math.h>
 #include <string.h>
 
-// Project a 3D vertex through the full transformation pipeline
+// project a 3d vertex with full transformation
 vec3_t project_vertex(vec3_t vertex, mat4_t local_to_world, mat4_t world_to_camera, mat4_t projection, int canvas_width, int canvas_height)
 {
-    // Local to World
-    vec3_t world_pos = mat4_transform_vec3(local_to_world, vertex);
+    // Local to World -> World to Camera -> Camera to Projection
+    mat4_t mvp = mat4_multiply(projection, mat4_multiply(world_to_camera, local_to_world));
+    // apply the tarnsformation to the vertex
+    vec4_t clip_pos = mat4_transform_vec4(mvp, (vec4_t){vertex.x, vertex.y, vertex.z, 1.0f});
 
-    // World to Camera
-    vec3_t camera_pos = mat4_transform_vec3(world_to_camera, world_pos);
-
-    // Camera to Projection (homogeneous coordinates)
-    vec4_t proj_pos = mat4_transform_vec4(projection, (vec4_t){camera_pos.x, camera_pos.y, camera_pos.z, 1.0f});
-
-    // Perspective divide
-    if (fabsf(proj_pos.w) > 0.0001f)
+    // // makng sure that w is not zero and convert back to standard coordinates
+    if (fabsf(clip_pos.w) > 0.0000001)
     {
-        proj_pos.x /= proj_pos.w;
-        proj_pos.y /= proj_pos.w;
-        proj_pos.z /= proj_pos.w;
+        // vertex is converted to homogeneous coordinates (adding w=1.0) and transformed by the MVP matrix, resulting in clip space coordinates.
+        clip_pos.x /= clip_pos.w;
+        clip_pos.y /= clip_pos.w;
+        clip_pos.z /= clip_pos.w;
     }
 
-    // Map to screen coordinates
-    float screen_x = (proj_pos.x * 0.5f + 0.5f) * canvas_width;
-    float screen_y = (1.0f - (proj_pos.y * 0.5f + 0.5f)) * canvas_height;
+    // Map to scsreen coordinates (Viewport transform)
+    float screen_x = (clip_pos.x * 0.5f + 0.5f) * canvas_width;
+    float screen_y = (1.0f - (clip_pos.y * 0.5f + 0.5f)) * canvas_height;
 
-    return vec3_create(screen_x, screen_y, proj_pos.z);
+    // returns the vector
+    return vec3_create(screen_x, screen_y, clip_pos.z);
 }
 
-// Check if a pixel is inside the circular viewport
-int clip_to_render_circular_viewport(canvas_t *canvas, float x, float y)
+// Checks if a pixel (x, y) is inside a circular drawing area defined by the canvas
+int clip_to_circular_viewport(canvas_t *canvas, float x, float y)
 {
     if (!canvas)
         return 0;
 
-    float center_x = canvas->width / 2.0f;
-    float center_y = canvas->height / 2.0f;
-    float radius = fminf(canvas->width, canvas->height) / 2.0f;
+    // Calculate the center of the canvas
+    float center_x = canvas->width * 0.5f;
+    float center_y = canvas->height * 0.5f;
 
+    // check whether the radius is the minimum of half of the width or half of the height to make sure that the circle is fit to the canvas
+    float radius = fminf(canvas->width * 0.5f, canvas->height * 0.5f);
+
+    // Calculate the distance from the pixel (x, y) to the center
     float dx = x - center_x;
     float dy = y - center_y;
-    return (dx * dx + dy * dy) <= (radius * radius);
+    // calculate the distances
+    float distance = sqrtf(dx * dx + dy * dy);
+
+    // Return 1 if the pixel is inside the circular viewport, 0 otherwise
+    return distance <= radius;
 }
 
-// Draw wireframe with depth sorting
-void wireframe(canvas_t *canvas, object3d_t *obj, mat4_t local_to_world, mat4_t world_to_camera, mat4_t projection)
+// Draw wireframe with depth sorting and lighting
+// Draw wireframe using logarithmic z-buffer
+void wireframe(canvas_t *canvas, object3d_t *obj,
+               mat4_t local_to_world, mat4_t world_to_camera, mat4_t projection,
+               light_t *lights, int num_lights,
+               float z_near, float z_far)
 {
     if (!canvas || !obj)
         return;
 
-    // Project all vertices
-    vec3_t *projected = (vec3_t *)malloc(obj->vertex_count * sizeof(vec3_t));
-    float *depths = (float *)malloc(obj->edge_count * sizeof(float));
-    int *edge_indices = (int *)malloc(obj->edge_count * sizeof(int));
+    // a array for store 2D projected vertices
+    vec3_t *projected_vertices = (vec3_t *)malloc(obj->vertex_count * sizeof(vec3_t));
+
+    float *edge_depths = (float *)malloc(obj->edge_count * sizeof(float));
+    int *sorted_edge_indices = (int *)malloc(obj->edge_count * sizeof(int));
 
     for (int i = 0; i < obj->vertex_count; i++)
     {
-        projected[i] = project_vertex(obj->vertices[i], local_to_world, world_to_camera, projection, canvas->width, canvas->height);
+        projected_vertices[i] = project_vertex(obj->vertices[i], local_to_world, world_to_camera, projection, canvas->width, canvas->height);
     }
 
-    // Calculate average depth for each edge
+    // get the log values
+    float log_z_near = logf(z_near + 1.0f); // 1 to avoid log 0
+    float log_z_far = logf(z_far + 1.0f);
+
     for (int i = 0; i < obj->edge_count; i++)
     {
-        int v0 = obj->edges[i][0];
-        int v1 = obj->edges[i][1];
-        depths[i] = (projected[v0].z + projected[v1].z) / 2.0f;
-        edge_indices[i] = i;
+        int v0_idx = obj->edges[i][0];
+        int v1_idx = obj->edges[i][1];
+
+        // Local to World -> World to Camera  transformation
+        vec3_t v0_world = mat4_transform_vec3(local_to_world, obj->vertices[v0_idx]);
+        vec3_t v1_world = mat4_transform_vec3(local_to_world, obj->vertices[v1_idx]);
+
+        vec3_t v0_camera = mat4_transform_vec3(world_to_camera, v0_world);
+        vec3_t v1_camera = mat4_transform_vec3(world_to_camera, v1_world);
+
+        float z0 = fabsf(v0_camera.z);
+        float z1 = fabsf(v1_camera.z);
+        float avg_z = (z0 + z1) * 0.5f;
+
+        // from the formula
+        edge_depths[i] = (logf(avg_z + 1.0f) - log_z_near) / (log_z_far - log_z_near);
+        sorted_edge_indices[i] = i;
     }
 
-    // Sort edges by depth (back to front)
+    // Bubble sort edges back to front
     for (int i = 0; i < obj->edge_count - 1; i++)
     {
         for (int j = 0; j < obj->edge_count - i - 1; j++)
         {
-            if (depths[j] < depths[j + 1])
+            if (edge_depths[j] < edge_depths[j + 1])
             {
-                float temp = depths[j];
-                depths[j] = depths[j + 1];
-                depths[j + 1] = temp;
-                int temp_idx = edge_indices[j];
-                edge_indices[j] = edge_indices[j + 1];
-                edge_indices[j + 1] = temp_idx;
+                float tmp_depth = edge_depths[j];
+                edge_depths[j] = edge_depths[j + 1];
+                edge_depths[j + 1] = tmp_depth;
+
+                int tmp_idx = sorted_edge_indices[j];
+                sorted_edge_indices[j] = sorted_edge_indices[j + 1];
+                sorted_edge_indices[j + 1] = tmp_idx;
             }
         }
     }
 
-    // Draw edges
+    // Draw sorted edges
     for (int i = 0; i < obj->edge_count; i++)
     {
-        int idx = edge_indices[i];
-        int v0 = obj->edges[idx][0];
-        int v1 = obj->edges[idx][1];
+        int edge_idx = sorted_edge_indices[i];
+        int v0_idx = obj->edges[edge_idx][0];
+        int v1_idx = obj->edges[edge_idx][1];
 
-        // Only draw if both endpoints are in the circular viewport
-        if (clip_to_render_circular_viewport(canvas, projected[v0].x, projected[v0].y) ||
-            clip_to_render_circular_viewport(canvas, projected[v1].x, projected[v1].y))
+        // transformation local to wolrd
+        vec3_t v0_world = mat4_transform_vec3(local_to_world, obj->vertices[v0_idx]);
+        vec3_t v1_world = mat4_transform_vec3(local_to_world, obj->vertices[v1_idx]);
+        // vector of the edge
+        vec3_t edge_dir = vec3_sub(v1_world, v0_world);
+
+        // calculate the light
+        float intensity = compute_lighting(edge_dir, lights, num_lights);
+
+        //
+        vec3_t p0 = projected_vertices[v0_idx];
+        vec3_t p1 = projected_vertices[v1_idx];
+
+        // cliping and draw
+        if (clip_to_circular_viewport(canvas, p0.x, p0.y) &&
+            clip_to_circular_viewport(canvas, p1.x, p1.y))
         {
-            draw_line_f(canvas, projected[v0].x, projected[v0].y, projected[v1].x, projected[v1].y, 1.0f);
+            draw_line_f(canvas, p0.x, p0.y, p1.x, p1.y, 1.5f, intensity);
         }
     }
 
-    free(projected);
-    free(depths);
-    free(edge_indices);
+    // free the memory
+    free(projected_vertices);
+    free(edge_depths);
+    free(sorted_edge_indices);
 }
 
 // Generate soccer ball (truncated icosahedron)
 object3d_t *generate_soccer_ball()
 {
+    // allocate the memory for the object
     object3d_t *obj = (object3d_t *)malloc(sizeof(object3d_t));
+    // set the object values
     obj->vertex_count = 60;
     obj->edge_count = 90;
 
+    // set the object structure values
     obj->vertices = (vec3_t *)malloc(obj->vertex_count * sizeof(vec3_t));
     obj->edges = (int (*)[2])malloc(obj->edge_count * sizeof(int[2]));
 
-    // Vertex coordinates from the provided JSON data
+    // Vertex coordinates from data file
     float vertices_data[] = {
         0, 0, 1.021, 0.4035482, 0, 0.9378643, -0.2274644, 0.3333333, 0.9378643,
         -0.1471226, -0.375774, 0.9378643, 0.579632, 0.3333333, 0.7715933, 0.5058321, -0.375774, 0.8033483,
@@ -140,13 +185,13 @@ object3d_t *generate_soccer_ball()
         -0.3521676, -0.6666667, -0.6884578, -0.579632, -0.3333333, -0.7715933, 0.1471226, 0.375774, -0.9378643,
         0.2274644, -0.3333333, -0.9378643, -0.4035482, 0, -0.9378643, 0, 0, -1.021};
 
-    // Load vertices
+    // create vectors for each vertex in the object file
     for (int i = 0; i < obj->vertex_count; i++)
     {
         obj->vertices[i] = vec3_create(vertices_data[i * 3], vertices_data[i * 3 + 1], vertices_data[i * 3 + 2]);
     }
 
-    // Edge list from the provided JSON data
+    // Edge list from data file
     int edges_data[] = {
         13, 15, 19, 29, 20, 30, 41, 50, 35, 45, 32, 22, 56, 52, 12, 5, 48, 56, 58, 51, 40, 30,
         57, 53, 16, 26, 33, 43, 33, 22, 21, 31, 8, 5, 0, 3, 2, 6, 2, 7, 13, 6, 10, 18, 46, 54,
@@ -158,7 +203,7 @@ object3d_t *generate_soccer_ball()
         9, 14, 16, 25, 33, 23, 17, 27, 27, 37, 52, 44, 37, 47, 43, 47, 42, 43, 32, 34, 14, 6,
         53, 54};
 
-    // Load edges
+    // set the edges of object from the array
     for (int i = 0; i < obj->edge_count; i++)
     {
         obj->edges[i][0] = edges_data[i * 2];

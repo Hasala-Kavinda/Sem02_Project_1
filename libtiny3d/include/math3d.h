@@ -4,7 +4,7 @@
 #include <math.h>
 #include <stdbool.h>
 
-// 3D Vector structure with Cartesian and spherical coordinates
+// structure to holds the 3D vercor in cartesian and spherical
 typedef struct
 {
     // Cartesian coordinates
@@ -18,10 +18,12 @@ typedef struct
 
 typedef struct
 {
+    // cartesian values for 4d
     float x, y, z, w;
 } vec4_t;
 
 // 4x4 Matrix structure (column-major order)
+// 4x4 Matrix structure
 typedef struct
 {
     // float m[16];
@@ -52,6 +54,8 @@ mat4_t mat4_rotate_xyz(float rx, float ry, float rz);
 mat4_t mat4_frustum_asymmetric(float left, float right, float bottom, float top, float near, float far);
 mat4_t mat4_multiply(mat4_t a, mat4_t b);
 vec3_t mat4_transform_vec3(mat4_t m, vec3_t v);
+
+// mat4 loockat function
 mat4_t mat4_look_at(vec3_t eye, vec3_t target, vec3_t up);
 
 #endif // MATH3D_H

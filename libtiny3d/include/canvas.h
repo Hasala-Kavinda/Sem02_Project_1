@@ -1,11 +1,14 @@
 #ifndef CANVAS_H
 #define CANVAS_H
 
+#include <stdio.h>
+
+// canvas structure that store the canvas data
 typedef struct
 {
     int width;
     int height;
-    float **pixels; // 2D array for pixel brightness (0.0 to 1.0)
+    float **pixels; // a 2D array to store the pixel values
 } canvas_t;
 
 // Create a canvas with given width and height
@@ -20,8 +23,8 @@ void canvas_clear(canvas_t *canvas, float value);
 // Set pixel brightness at floating-point coordinates with bilinear filtering
 void set_pixel_f(canvas_t *canvas, float x, float y, float intensity);
 
-// Draw a line from (x0, y0) to (x1, y1) with thickness
-void draw_line_f(canvas_t *canvas, float x0, float y0, float x1, float y1, float thickness);
+// Draw a line from (x0, y0) to (x1, y1) with thickness and intensity
+void draw_line_f(canvas_t *canvas, float x0, float y0, float x1, float y1, float thickness, float intensity);
 
 // Save canvas to PGM file
 void canvas_save_pgm(canvas_t *canvas, const char *filename);
